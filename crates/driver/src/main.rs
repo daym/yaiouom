@@ -17,18 +17,13 @@ mod dimanalysis;
 
 //use rustc_interface::interface::Compiler;
 use rustc_driver::Callbacks;
-use rustc_middle::query::ExternProviders;
-use rustc_middle::query::Providers;
+use rustc_middle::util::Providers;
 use rustc_session::Session;
 
 struct MyCallbacks;
 
 impl MyCallbacks {
-    fn qoverride_queries(
-        session: &Session,
-        providers: &mut Providers,
-        external_provides: &mut ExternProviders,
-    ) {
+    fn qoverride_queries(session: &Session, providers: &mut Providers) {
         /* FIXME if let Some(original) = original_queries.as_ref() {
             original(session, providers);
         }*/

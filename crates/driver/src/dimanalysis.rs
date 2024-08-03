@@ -2,7 +2,7 @@ use rustc_hir as hir;
 use rustc_hir::def_id::DefId;
 use rustc_hir::intravisit::{self, Visitor};
 use rustc_middle::ty;
-use rustc_middle::ty::{Ty, TyCtxt, TypeckTables};
+use rustc_middle::ty::{Ty, TyCtxt, TypeckResults};
 
 //use rustc_ast::ast;
 //use rustc_attr as attr;
@@ -27,7 +27,7 @@ const YAOIOUM_ATTR_COMBINATOR_DIMENSIONLESS: &str = "rustc_yaiouom_combinator_di
 /// (notably closures), `typeck_tables(def_id)` would wind up
 /// redirecting to the owning function.
 fn primary_body_of<'a, 'tcx>(
-    tcx: TyCtxt<'tcx>, // 'a
+    _tcx: TyCtxt<'tcx>, // 'a
     node: hir::Node<'a>,
 ) -> Option<(hir::BodyId, Option<&'tcx hir::FnDecl<'a>>)> {
     match node {
@@ -41,13 +41,13 @@ fn primary_body_of<'a, 'tcx>(
         hir::Node::TraitItem(item) => match item.kind {
             hir::TraitItemKind::Const(_, Some(body)) => Some((body, None)),
             hir::TraitItemKind::Fn(ref sig, hir::TraitFn::Provided(body)) => {
-                Some((body, Some(&sig.decl)))
+                Some((body, Some(sig.decl)))
             }
             _ => None,
         },
         hir::Node::ImplItem(item) => match item.kind {
             hir::ImplItemKind::Const(_, body) => Some((body, None)),
-            hir::ImplItemKind::Fn(ref sig, body) => Some((body, Some(&sig.decl))),
+            hir::ImplItemKind::Fn(ref sig, body) => Some((body, Some(sig.decl))),
             _ => None,
         },
         hir::Node::Expr(expr) => {
@@ -88,13 +88,13 @@ impl<'tcx> UnitConstraints<'tcx> {
         let mut buf = String::new();
         let mut first = true;
         let table = if left { &self.left } else { &self.right };
-        for (ref ty, &(_, ref number)) in table {
+        for (ty, (_, ref number)) in table {
             let name = match ty.kind() {
                 ty::Adt(ref def, _) => self.tcx.def_path(def.did()).to_string_no_crate_verbose(),
                 ty::Param(ref param) => {
                     // TyParam
                     let generics = self.tcx.generics_of(self.def_id);
-                    let def = generics.type_param(&param, self.tcx);
+                    let def = generics.type_param(*param, self.tcx);
                     self.tcx.def_path(def.def_id).to_string_no_crate_verbose() // def.def_id
                 }
                 _ => unimplemented!(),
@@ -154,7 +154,7 @@ impl<'tcx> UnitConstraints<'tcx> {
                 // `Mul`, `Inv`, `Dimensionless` (in which case they are handled
                 // as operators) or any other type (in which case they are handled
                 // as base units).
-                let span = self.tcx.def_span(def.did()).clone();
+                let span = self.tcx.def_span(def.did());
                 if self
                     .tcx
                     .has_attr(def.did(), Symbol::intern(YAOIOUM_ATTR_COMBINATOR_MUL))
@@ -181,7 +181,7 @@ impl<'tcx> UnitConstraints<'tcx> {
             }
             ty::Param(param) => {
                 let generics = self.tcx.generics_of(self.def_id);
-                let def = generics.type_param(&param, self.tcx);
+                let def = generics.type_param(*param, self.tcx);
                 let span = self.tcx.def_span(def.def_id);
                 self.add_one(ty, span, left, positive);
                 Ok(())
@@ -203,13 +203,13 @@ impl<'tcx> UnitConstraints<'tcx> {
     }
 }
 
-struct GatherConstraintsVisitor<'v, 'tcx: 'v> {
+struct GatherConstraintsVisitor<'tcx> {
     tcx: TyCtxt<'tcx>,
-    tables: &'tcx TypeckTables<'tcx>,
+    tables: &'tcx TypeckResults<'tcx>,
     constraints: Vec<UnitConstraints<'tcx>>,
     def_id: DefId,
 }
-impl<'v, 'tcx> GatherConstraintsVisitor<'v, 'tcx> {
+impl<'tcx> GatherConstraintsVisitor<'tcx> {
     fn add_unification(&mut self, left: Ty<'tcx>, right: Ty<'tcx>, span: Span) {
         // eprintln!("dim_analyzer: We need to unify {:?} == {:?}", left, right);
 
@@ -229,26 +229,24 @@ impl<'v, 'tcx> GatherConstraintsVisitor<'v, 'tcx> {
     }
 }
 
-impl<'v, 'tcx> Visitor<'v> for GatherConstraintsVisitor<'v, 'tcx> {
+impl<'v, 'tcx> Visitor<'v> for GatherConstraintsVisitor<'tcx> {
     fn visit_expr(&mut self, expr: &'v hir::Expr) {
-        if let hir::ExprKind::MethodCall(segment, _, args, _) = &expr.kind {
+        if let hir::ExprKind::MethodCall(segment, _, args, _) = expr.kind {
             // Main interesting case: a call to `some_expr.unify()`
-            let def_id = self.tables.type_dependent_defs()[expr.hir_id].def_id();
-            /*            let caller_def_id = self
-                        .tcx
-                        .typeck_results()
-                        .type_dependent_def_id(expr.hir_id)
-                        .unwrap();
-            caller_def_id.to_def_id()
-                         */
+            let (_def_kind, def_id) = self.tables.type_dependent_defs()[expr.hir_id].unwrap();
+            /*            let def_id = self
+            .tcx
+            .typeck_body(tcx.hir().get_if_local(self.def_id)
+            .type_dependent_def_id(expr.hir_id)
+            .unwrap();*/
+            //caller_def_id.to_def_id()
             if self
                 .tcx
                 .has_attr(def_id, Symbol::intern(YAOIOUM_ATTR_CHECK_UNIFY))
             {
                 // if self.tcx.has_attr(caller_def_id.to_def_id(), sym::your_attr_name) {
                 // This is a call to `unify`.
-                let substs = self.tables.node_substs(expr.hir_id);
-                //                let substs = self.tcx.typeck_results().node_substs(expr.hir_id);
+                let substs = self.tables.node_args(expr.hir_id); // FIXME test
 
                 // By definition, `unify` has type `<V: Unit>(self: Measure<T, U>) -> Measure<T, V>`.
                 // Extract `U` and `V`. We don't care about `T`, it has already been checked
@@ -265,20 +263,14 @@ impl<'v, 'tcx> Visitor<'v> for GatherConstraintsVisitor<'v, 'tcx> {
     }
 }
 
-pub struct DimAnalyzer<'a, 'tcx>
-where
-    'tcx: 'a,
-{
+pub struct DimAnalyzer<'tcx> {
     tcx: TyCtxt<'tcx>,
-    tables: &'tcx TypeckTables<'tcx>,
+    tables: &'tcx TypeckResults<'tcx>,
     def_id: DefId,
 }
 
-impl<'a, 'tcx> DimAnalyzer<'a, 'tcx>
-where
-    'tcx: 'a,
-{
-    pub fn new(tcx: TyCtxt<'tcx>, tables: &'tcx TypeckTables<'tcx>, def_id: DefId) -> Self {
+impl<'tcx> DimAnalyzer<'tcx> {
+    pub fn new(tcx: TyCtxt<'tcx>, tables: &'tcx TypeckResults<'tcx>, def_id: DefId) -> Self {
         Self {
             tcx,
             tables,
@@ -288,7 +280,7 @@ where
 
     pub fn analyze(&mut self) {
         // eprintln!("\n\n\ndim_analyzer: -----------   analyze {:?}", self.def_id);
-        if self.tables.tainted_by_errors {
+        if self.tables.tainted_by_errors.is_some() {
             // eprintln!("dim_analyzer: Don't proceed with analysis, there is already an error");
             return;
         }
@@ -313,7 +305,7 @@ where
         let body = self.tcx.hir().body(body_id);
         // eprintln!("dim_analyzer: body {:?}", body);
 
-        if let Some(_) = fn_decl {
+        if fn_decl.is_some() {
             // eprintln!("dim_analyzer: This is a function declaration");
             let mut visitor = GatherConstraintsVisitor {
                 tcx: self.tcx,
@@ -322,27 +314,26 @@ where
                 def_id: self.def_id,
             };
             visitor.visit_body(body);
-            if visitor.constraints.len() != 0 {
-                use rustc_errors::DiagnosticStyledString;
+            if !visitor.constraints.is_empty() {
+                use rustc_errors::DiagStyledString;
                 for constraint in visitor.constraints.drain(..) {
-                    let mut builder = self.tcx.sess.struct_span_err(
+                    // FIXME rustc_errors::struct_span_code_err(dcx, span, code, ...)
+                    let mut builder = self.tcx.dcx().struct_span_err(
                         constraint.span,
                         "Cannot resolve the following units of measures:",
                     );
-                    let mut expected = DiagnosticStyledString::new();
+                    let mut expected = DiagStyledString::new();
                     expected.push_normal(constraint.describe(true));
 
-                    let mut found = DiagnosticStyledString::new();
+                    let mut found = DiagStyledString::new();
                     found.push_normal(constraint.describe(false));
 
                     builder.note_expected_found(&"unit of measure:", expected, &"found", found);
                     builder.span_label(constraint.span, "in this unification");
-                    builder.span_label(span.clone(), "While examining this function");
+                    builder.span_label(span, "While examining this function");
                     builder.emit();
                 }
             }
-        } else {
-            return;
         }
     }
 }
