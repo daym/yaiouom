@@ -3,4 +3,11 @@ name = "yaiouom-checker"
 version = "0.1.0"
 authors = ["David Teller <D.O.Teller@gmail.com>"]
 
+
 [dependencies]
+
+[package.metadata.rust-analyzer]
+# This package uses #[feature(rustc_private)]
+# Note: In emacs, still need to customize lsp-rust-analyzer-rustc-source to something like
+# "/usr/local/rustup/toolchains/nightly-2024-08-03-x86_64-unknown-linux-musl/lib/rustlib/rustc-src/rust/compiler/rustc/Cargo.toml"
+rustc_private = true
