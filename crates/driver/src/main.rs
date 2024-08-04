@@ -31,11 +31,19 @@ impl MyCallbacks {
         let result = (providers.typeck)(ctxt, def_id).to_owned();
         let mut analyzer = dimanalysis::DimAnalyzer::new(ctxt, result, def_id.into());
         analyzer.analyze();
-
+        result
+    }
+    fn diagnostic_only_typeck(ctxt: TyCtxt, def_id: LocalDefId) -> &ty::TypeckResults {
+        let providers = Providers::default();
+        //rustc_driver::default_provide(&mut providers);
+        let result = (providers.diagnostic_only_typeck)(ctxt, def_id).to_owned();
+        let mut analyzer = dimanalysis::DimAnalyzer::new(ctxt, result, def_id.into());
+        analyzer.analyze();
         result
     }
     fn override_queries(session: &Session, providers: &mut Providers) {
         providers.typeck = Self::typeck;
+        providers.diagnostic_only_typeck = Self::diagnostic_only_typeck;
     }
 }
 
