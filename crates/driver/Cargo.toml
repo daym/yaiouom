@@ -2,7 +2,7 @@
 name = "yaiouom-checker"
 version = "0.1.0"
 authors = ["David Teller <D.O.Teller@gmail.com>"]
-
+edition = "2021"
 
 [dependencies]
 
