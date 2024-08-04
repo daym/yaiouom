@@ -17,13 +17,28 @@ mod dimanalysis;
 
 //use rustc_interface::interface::Compiler;
 use rustc_driver::Callbacks;
+use rustc_hir::def_id::LocalDefId;
+use rustc_middle::ty;
+use rustc_middle::ty::{Ty, TyCtxt, TypeckResults};
 use rustc_middle::util::Providers;
 use rustc_session::Session;
-
 struct MyCallbacks;
 
 impl MyCallbacks {
+    fn qtypeck<'tcx>(ctxt: TyCtxt<'tcx>, def_id: LocalDefId) -> &'tcx ty::TypeckResults<'tcx> {
+        let providers = Providers::default();
+        //rustc_driver::default_provide(&mut providers);
+        let result = (providers.typeck)(ctxt, def_id).to_owned();
+        let mut analyzer = dimanalysis::DimAnalyzer::new(ctxt, result, def_id.into());
+        analyzer.analyze();
+
+        result
+    }
     fn qoverride_queries(session: &Session, providers: &mut Providers) {
+        //let old_check = providers.typeck;
+        //providers.typeck = |ctxt, def_id| old_check(ctxt, def_id);
+        //(providers.analysis)()
+        providers.typeck = MyCallbacks::qtypeck;
         /* FIXME if let Some(original) = original_queries.as_ref() {
             original(session, providers);
         }*/
